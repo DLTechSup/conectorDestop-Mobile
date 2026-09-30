@@ -48,7 +48,7 @@ class RemoteService : Service() {
 
     interface Listener {
         fun onState(state: State, text: String) {}
-        fun onFrame(bmp: Bitmap, vx: Float, vy: Float, vw: Float, vh: Float) {}
+        fun onFrame(bmp: Bitmap, vx: Float, vy: Float, vw: Float, vh: Float, cx: Float, cy: Float) {}
         fun onInfo(pcName: String, monitors: Int, control: Boolean) {}
     }
 
@@ -288,18 +288,18 @@ class RemoteService : Service() {
         }
     }
 
-    /** Quadro: 0x02 + região (4 floats big-endian) + JPEG. */
+    /** Quadro: 0x02 + região (4 floats) + cursor (2 floats, -1 = desconhecido) + JPEG. */
     private fun onBinary(data: ByteArray) {
-        if (data.size < 18 || data[0].toInt() != 2) return
-        val bb = java.nio.ByteBuffer.wrap(data, 1, 16)
-        val region = floatArrayOf(bb.float, bb.float, bb.float, bb.float)
-        val bmp = BitmapFactory.decodeByteArray(data, 17, data.size - 17) ?: return
-        latest.set(Frame(bmp, region))
+        if (data.size < 26 || data[0].toInt() != 2) return
+        val bb = java.nio.ByteBuffer.wrap(data, 1, 24)
+        val info = FloatArray(6) { bb.float }
+        val bmp = BitmapFactory.decodeByteArray(data, 25, data.size - 25) ?: return
+        latest.set(Frame(bmp, info))
         if (posted.compareAndSet(false, true)) {
             main.post {
                 posted.set(false)
                 latest.getAndSet(null)?.let { f ->
-                    listeners.forEach { it.onFrame(f.bmp, f.r[0], f.r[1], f.r[2], f.r[3]) }
+                    listeners.forEach { it.onFrame(f.bmp, f.r[0], f.r[1], f.r[2], f.r[3], f.r[4], f.r[5]) }
                 }
             }
         }

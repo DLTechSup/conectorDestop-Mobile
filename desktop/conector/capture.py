@@ -1,4 +1,4 @@
-"""Captura de tela (mss) -> JPEG, com cursor desenhado e descarte de quadros idênticos."""
+"""Captura de tela (mss) -> JPEG, com posição do cursor e descarte de quadros idênticos."""
 import ctypes
 import io
 import sys
@@ -6,9 +6,7 @@ import zlib
 from concurrent.futures import ThreadPoolExecutor
 
 import mss
-from PIL import Image, ImageDraw
-
-_CURSOR = [(0, 0), (0, 17), (4, 13), (7, 20), (10, 19), (7, 12), (12, 12)]
+from PIL import Image
 
 
 def cursor_pos():
@@ -50,7 +48,7 @@ class Capturer:
         self._last = None
 
     async def frame(self, loop, monitor, maxw, quality, view=(0.0, 0.0, 1.0, 1.0)):
-        """Retorna (jpeg, view_usada) ou None se nada mudou.
+        """Retorna (jpeg, view_usada, cursor_normalizado) ou None se nada mudou.
 
         `view` = região (x, y, w, h) normalizada 0..1 da tela — é o zoom: o recorte
         é feito na resolução nativa, então a imagem ampliada continua nítida.
@@ -79,24 +77,19 @@ class Capturer:
         if img.width > maxw:
             scale = maxw / img.width
             img = img.resize((maxw, max(1, int(img.height * scale))), Image.BILINEAR)
+        # O cursor NÃO é desenhado na imagem: o celular o desenha (sem atraso) usando esta posição
+        # normalizada (0..1 sobre a tela inteira do monitor).
         cur = cursor_pos()
-        cpos = None
+        cn = (-1.0, -1.0)
         if cur:
-            cx = int((cur[0] - m["left"] - box[0]) * scale)
-            cy = int((cur[1] - m["top"] - box[1]) * scale)
-            if 0 <= cx < img.width and 0 <= cy < img.height:
-                cpos = (cx, cy)
-        digest = zlib.crc32(img.tobytes()) ^ hash((cpos, used))
+            cn = ((cur[0] - m["left"]) / m["width"], (cur[1] - m["top"]) / m["height"])
+        digest = zlib.crc32(img.tobytes()) ^ hash((round(cn[0], 4), round(cn[1], 4), used))
         if digest == self._last:
             return None
         self._last = digest
-        if cpos:
-            d = ImageDraw.Draw(img)
-            pts = [(cpos[0] + x, cpos[1] + y) for x, y in _CURSOR]
-            d.polygon(pts, fill="white", outline="black")
         buf = io.BytesIO()
         img.save(buf, "JPEG", quality=quality)
-        return buf.getvalue(), used
+        return buf.getvalue(), used, cn
 
     def close(self):
         def _c():

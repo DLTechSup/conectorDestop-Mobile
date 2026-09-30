@@ -41,6 +41,11 @@ class Prefs(ctx: Context) {
         get() = sp.getString("blocked", "") ?: ""
         set(v) = sp.edit().putString("blocked", v).apply()
 
+    /** Modo de toque: 0 touchpad, 1 toque direto, 2 arrastar, 3 rolar. */
+    var touchMode: Int
+        get() = sp.getInt("touchmode", 0)
+        set(v) = sp.edit().putInt("touchmode", v).apply()
+
     var quality: Int
         get() = sp.getInt("quality", 1)
         set(v) = sp.edit().putInt("quality", v).apply()

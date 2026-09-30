@@ -22,6 +22,9 @@ import kotlin.math.abs
  * Mostra a tela do PC, converte toques em mouse/teclado e permite ZOOM:
  * pinça para ampliar, dois dedos para mover. A região visível é enviada ao PC,
  * que recorta na resolução nativa (imagem ampliada nítida, não borrada).
+ *
+ * Modos: TOUCHPAD (padrão, como no Chrome Remote Desktop: o dedo move o cursor
+ * sem ele "pular" para o toque), DIRECT (o cursor vai para onde toca), DRAG e SCROLL.
  */
 class RemoteView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = null) : View(ctx, attrs) {
 
@@ -35,10 +38,10 @@ class RemoteView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = 
         fun zoomChanged(zoom: Float)
     }
 
-    enum class Mode { MOUSE, DRAG, SCROLL }
+    enum class Mode { TOUCHPAD, DIRECT, DRAG, SCROLL }
 
     var output: Output? = null
-    var mode = Mode.MOUSE
+    var mode = Mode.TOUCHPAD
 
     val zoomLevel: Float get() = zoom
 
@@ -60,6 +63,25 @@ class RemoteView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = 
     private var lastViewSent = 0L
     private var viewPending = false
 
+    // cursor (normalizado sobre a tela inteira do PC), desenhado aqui para responder sem atraso
+    private var cu = 0.5f
+    private var cv = 0.5f
+    private var cursorKnown = false
+    private var lastCursorTouch = 0L
+    private var lastX = 0f
+    private var lastY = 0f
+    private var lastT = 0L
+    private var multiStart = 0L
+    private var multiMoved = false
+    private var multiFx = 0f
+    private var multiFy = 0f
+    private var multiZoom = 1f
+    private val cursorPath = android.graphics.Path()
+    private val cursorFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+    private val cursorStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.BLACK; style = Paint.Style.STROKE; strokeWidth = 2.2f; strokeJoin = Paint.Join.ROUND
+    }
+
     init {
         setBackgroundColor(Color.BLACK)
         isFocusable = true
@@ -67,9 +89,15 @@ class RemoteView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = 
     }
 
     // ------------------------------------------------------------ desenho / geometria
-    fun setFrame(b: Bitmap, x: Float, y: Float, w: Float, h: Float) {
+    fun setFrame(b: Bitmap, x: Float, y: Float, w: Float, h: Float, curX: Float, curY: Float) {
         bitmap = b
         fx = x; fy = y; fw = w; fh = h
+        // Sincroniza com o cursor real do PC, exceto enquanto o usuário o está movendo.
+        if (curX >= 0f && curY >= 0f &&
+            (!cursorKnown || System.currentTimeMillis() - lastCursorTouch > 700)
+        ) {
+            cu = curX; cv = curY; cursorKnown = true
+        }
         invalidate()
     }
 
@@ -96,7 +124,45 @@ class RemoteView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = 
         c.save()
         c.clipRect(fit)
         c.drawBitmap(b, null, dst, paint)
+        if (cursorKnown) drawCursor(c)
         c.restore()
+    }
+
+    private fun drawCursor(c: Canvas) {
+        val sx = fit.left + (cu - vx) * zoom * fit.width()
+        val sy = fit.top + (cv - vy) * zoom * fit.height()
+        if (sx < fit.left - 4 || sx > fit.right + 4 || sy < fit.top - 4 || sy > fit.bottom + 4) return
+        val k = resources.displayMetrics.density * 1.15f
+        cursorPath.reset()
+        cursorPath.moveTo(sx, sy)
+        cursorPath.lineTo(sx, sy + 17f * k)
+        cursorPath.lineTo(sx + 4.2f * k, sy + 13.2f * k)
+        cursorPath.lineTo(sx + 7.2f * k, sy + 20f * k)
+        cursorPath.lineTo(sx + 9.8f * k, sy + 18.8f * k)
+        cursorPath.lineTo(sx + 6.8f * k, sy + 12.4f * k)
+        cursorPath.lineTo(sx + 12f * k, sy + 12.4f * k)
+        cursorPath.close()
+        c.drawPath(cursorPath, cursorFill)
+        c.drawPath(cursorPath, cursorStroke)
+    }
+
+    private fun setCursor(u: Float, v: Float) {
+        cu = u.coerceIn(0f, 1f); cv = v.coerceIn(0f, 1f)
+        cursorKnown = true
+        lastCursorTouch = System.currentTimeMillis()
+    }
+
+    /** Com zoom, acompanha o cursor para que ele não saia da área visível. */
+    private fun keepCursorInView() {
+        if (zoom <= 1.01f) return
+        val size = 1f / zoom
+        val margin = size * 0.08f
+        var changed = false
+        if (cu < vx + margin) { vx = cu - margin; changed = true }
+        if (cu > vx + size - margin) { vx = cu - size + margin; changed = true }
+        if (cv < vy + margin) { vy = cv - margin; changed = true }
+        if (cv > vy + size - margin) { vy = cv - size + margin; changed = true }
+        if (changed) applyView()
     }
 
     /** Toque na tela do celular -> coordenadas normalizadas da tela inteira do PC. */
@@ -169,18 +235,37 @@ class RemoteView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = 
     // ------------------------------------------------------------ toques
     private val detector = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent) = true
+
+        override fun onSingleTapUp(e: MotionEvent): Boolean {
+            // Touchpad: clica na hora (sem esperar o toque duplo) onde o cursor está.
+            if (mode == Mode.TOUCHPAD) output?.mouse("click", cu, cv)
+            return true
+        }
+
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-            norm(e.x, e.y)?.let { output?.mouse("click", it.first, it.second) }
+            if (mode != Mode.TOUCHPAD) norm(e.x, e.y)?.let {
+                setCursor(it.first, it.second)
+                output?.mouse("click", it.first, it.second)
+            }
             return true
         }
 
         override fun onDoubleTap(e: MotionEvent): Boolean {
-            norm(e.x, e.y)?.let { output?.mouse("dclick", it.first, it.second) }
+            // Toque duplo: no touchpad é o 2º clique (o sistema junta em duplo clique).
+            if (mode == Mode.TOUCHPAD) output?.mouse("click", cu, cv)
+            else norm(e.x, e.y)?.let { output?.mouse("dclick", it.first, it.second) }
             return true
         }
 
         override fun onLongPress(e: MotionEvent) {
-            norm(e.x, e.y)?.let { output?.mouse("rclick", it.first, it.second, "right") }
+            if (mode == Mode.TOUCHPAD) {
+                // Segurar = pega e arrasta (botão esquerdo) a partir do cursor atual.
+                performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                output?.mouse("down", cu, cv)
+                dragging = true
+            } else {
+                norm(e.x, e.y)?.let { output?.mouse("rclick", it.first, it.second, "right") }
+            }
         }
     })
 
@@ -188,10 +273,28 @@ class RemoteView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = 
         if (e.pointerCount >= 2 || scaleDetector.isInProgress) {
             if (!multi) {
                 multi = true
+                multiStart = System.currentTimeMillis()
+                multiMoved = false
+                multiZoom = zoom
+                multiFx = (e.getX(0) + e.getX(1)) / 2
+                multiFy = (e.getY(0) + e.getY(1)) / 2
                 if (dragging) { // cancela arrasto em andamento
-                    norm(e.x, e.y)?.let { output?.mouse("up", it.first, it.second) }
+                    output?.mouse("up", cu, cv)
                     dragging = false
                 }
+            } else if (e.pointerCount >= 2) {
+                val fx2 = (e.getX(0) + e.getX(1)) / 2
+                val fy2 = (e.getY(0) + e.getY(1)) / 2
+                val slop = 20f * resources.displayMetrics.density
+                if (abs(fx2 - multiFx) > slop || abs(fy2 - multiFy) > slop || abs(zoom - multiZoom) > 0.02f) multiMoved = true
+            }
+            // Dois dedos tocam e soltam rápido, sem mover = clique direito
+            if (e.actionMasked == MotionEvent.ACTION_POINTER_UP && !multiMoved &&
+                System.currentTimeMillis() - multiStart < 280 && mode != Mode.SCROLL
+            ) {
+                multiMoved = true // só uma vez
+                if (mode == Mode.TOUCHPAD) output?.mouse("rclick", cu, cv, "right")
+                else norm(multiFx, multiFy)?.let { output?.mouse("rclick", it.first, it.second, "right") }
             }
             scaleDetector.onTouchEvent(e)
             return true
@@ -201,19 +304,41 @@ class RemoteView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = 
             return true
         }
 
-        val p = norm(e.x, e.y) ?: return true
         when (mode) {
-            Mode.DRAG -> when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    output?.mouse("move", p.first, p.second)
-                    output?.mouse("down", p.first, p.second)
-                    dragging = true
+            Mode.TOUCHPAD -> {
+                detector.onTouchEvent(e)
+                when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> { lastX = e.x; lastY = e.y; lastT = e.eventTime }
+                    MotionEvent.ACTION_MOVE -> touchpadMove(e)
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        if (dragging) output?.mouse("up", cu, cv)
+                        dragging = false
+                    }
                 }
-                MotionEvent.ACTION_MOVE -> throttledMove(p)
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (dragging) output?.mouse("up", p.first, p.second)
-                    dragging = false
+            }
+            Mode.DIRECT -> {
+                val p = norm(e.x, e.y) ?: return true
+                detector.onTouchEvent(e)
+                if (e.actionMasked == MotionEvent.ACTION_DOWN || e.actionMasked == MotionEvent.ACTION_MOVE) setCursor(p.first, p.second)
+                if (e.actionMasked == MotionEvent.ACTION_MOVE) throttledMove(p)
+                invalidate()
+            }
+            Mode.DRAG -> {
+                val p = norm(e.x, e.y) ?: return true
+                when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        setCursor(p.first, p.second)
+                        output?.mouse("move", p.first, p.second)
+                        output?.mouse("down", p.first, p.second)
+                        dragging = true
+                    }
+                    MotionEvent.ACTION_MOVE -> { setCursor(p.first, p.second); throttledMove(p) }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        if (dragging) output?.mouse("up", p.first, p.second)
+                        dragging = false
+                    }
                 }
+                invalidate()
             }
             Mode.SCROLL -> {
                 detector.onTouchEvent(e)
@@ -230,12 +355,23 @@ class RemoteView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = 
                     }
                 }
             }
-            Mode.MOUSE -> {
-                detector.onTouchEvent(e)
-                if (e.actionMasked == MotionEvent.ACTION_MOVE) throttledMove(p)
-            }
         }
         return true
+    }
+
+    /** Touchpad: deslocamento relativo do dedo -> deslocamento do cursor (com aceleração leve). */
+    private fun touchpadMove(e: MotionEvent) {
+        if (!computeFit()) return
+        val dx = e.x - lastX
+        val dy = e.y - lastY
+        val dt = maxOf(1L, e.eventTime - lastT)
+        lastX = e.x; lastY = e.y; lastT = e.eventTime
+        val speed = kotlin.math.hypot(dx, dy) / dt // px/ms
+        val gain = 1.2f + (speed * 0.8f).coerceAtMost(2.8f)
+        setCursor(cu + dx * gain / (fit.width() * zoom), cv + dy * gain / (fit.height() * zoom))
+        keepCursorInView()
+        throttledMove(Pair(cu, cv))
+        invalidate()
     }
 
     private fun throttledMove(p: Pair<Float, Float>) {

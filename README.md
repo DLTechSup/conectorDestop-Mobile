@@ -38,9 +38,15 @@ Com Android Studio: abra a pasta `android/`, *Build → Build APK(s)*.
 2. **Ler QR code do PC** (ou digite endereço, porta e chave) → conecta e abre a tela.
 3. **Zoom:** pinça para ampliar (até 6×) e dois dedos para mover; o PC reenquadra a região
    ampliada na resolução real, então fica nítido. O botão de setas nos cantos volta a 1×.
-   Toque = clique · toque duplo = duplo clique · segurar = botão direito · arrastar = mover o
-   cursor. O botão de modo alterna **Mouse → Arrastar** (segura o botão esquerdo, para selecionar
-   e mover janelas) **→ Rolar** (deslizar = roda do mouse). *Teclado* / *Teclas* = digitar e
+   O botão de modo na barra alterna:
+   - **Touchpad** (padrão, como no Chrome Remote Desktop): deslizar move o cursor sem ele pular
+     para onde você toca · toque = clique · dois toques = duplo clique · dois dedos tocando =
+     botão direito · segurar e deslizar = arrastar. O cursor é desenhado no celular, sem atraso.
+   - **Toque direto**: o cursor vai para onde você toca · segurar = botão direito.
+   - **Arrastar**: mover o dedo segura o botão esquerdo (toque direto).
+   - **Rolar**: deslizar = roda do mouse.
+
+   *Teclado* / *Teclas* = digitar e
    atalhos (Ctrl+C, Alt+Tab, Win…).
 4. Na tela inicial do app, configure o **som das notificações** e desative a
    **otimização de bateria** (evita que Xiaomi/Samsung/Huawei matem a conexão).

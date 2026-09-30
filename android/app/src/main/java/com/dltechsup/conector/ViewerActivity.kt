@@ -51,6 +51,7 @@ class ViewerActivity : AppCompatActivity(), RemoteService.Listener, RemoteView.O
         b.btnHide.setOnClickListener { setToolbarVisible(false) }
         b.btnShow.setOnClickListener { setToolbarVisible(true) }
         b.btnExit.setOnClickListener { confirmExit() }
+        applyMode(RemoteView.Mode.values().getOrElse(prefs.touchMode) { RemoteView.Mode.TOUCHPAD }, false)
         buildKeysRow()
     }
 
@@ -129,9 +130,9 @@ class ViewerActivity : AppCompatActivity(), RemoteService.Listener, RemoteView.O
         b.loading.visibility = View.VISIBLE
     }
 
-    override fun onFrame(bmp: Bitmap, vx: Float, vy: Float, vw: Float, vh: Float) {
+    override fun onFrame(bmp: Bitmap, vx: Float, vy: Float, vw: Float, vh: Float, cx: Float, cy: Float) {
         if (!gotFrame) { gotFrame = true; b.loading.visibility = View.GONE }
-        b.remote.setFrame(bmp, vx, vy, vw, vh)
+        b.remote.setFrame(bmp, vx, vy, vw, vh, cx, cy)
     }
 
     // ------------------------------------------------------------ RemoteView.Output
@@ -178,20 +179,24 @@ class ViewerActivity : AppCompatActivity(), RemoteService.Listener, RemoteView.O
         imm.showSoftInput(b.remote, InputMethodManager.SHOW_FORCED)
     }
 
-    private fun cycleMode() {
-        val next = when (b.remote.mode) {
-            RemoteView.Mode.MOUSE -> RemoteView.Mode.DRAG
-            RemoteView.Mode.DRAG -> RemoteView.Mode.SCROLL
-            RemoteView.Mode.SCROLL -> RemoteView.Mode.MOUSE
-        }
-        b.remote.mode = next
-        val (icon, label) = when (next) {
-            RemoteView.Mode.MOUSE -> R.drawable.ic_pointer to "Mouse: toque = clique, segurar = botão direito"
+    private fun applyMode(m: RemoteView.Mode, announce: Boolean) {
+        b.remote.mode = m
+        prefs.touchMode = m.ordinal
+        val (icon, label) = when (m) {
+            RemoteView.Mode.TOUCHPAD -> R.drawable.ic_touchpad to
+                "Touchpad: deslize move o cursor · toque clica · 2 dedos = botão direito · segurar = arrastar"
+            RemoteView.Mode.DIRECT -> R.drawable.ic_pointer to
+                "Toque direto: o cursor vai onde você toca · segurar = botão direito"
             RemoteView.Mode.DRAG -> R.drawable.ic_drag to "Arrastar: mover o dedo segura o botão esquerdo"
             RemoteView.Mode.SCROLL -> R.drawable.ic_scroll to "Rolar: deslize para cima/baixo"
         }
         b.btnMode.setImageResource(icon)
-        toast(label)
+        if (announce) toast(label)
+    }
+
+    private fun cycleMode() {
+        val all = RemoteView.Mode.values()
+        applyMode(all[(b.remote.mode.ordinal + 1) % all.size], true)
     }
 
     private fun cycleMonitor() {

@@ -26,7 +26,7 @@ class FakeCapturer:
     async def frame(self, loop, monitor, maxw, q, view=(0, 0, 1, 1)):
         FakeCapturer.n += 1
         FakeCapturer.last_view = view
-        return (b"\xff\xd8fakejpeg", view) if FakeCapturer.n < 4 else None
+        return (b"\xff\xd8fakejpeg", view, (0.5, 0.25)) if FakeCapturer.n < 4 else None
 
 
 def free_port():
@@ -68,8 +68,8 @@ def test_flow():
                 if isinstance(m, bytes):
                     assert m[0] == 2
                     import struct
-                    assert struct.unpack(">ffff", m[1:17]) == (0.25, 0.5, 0.5, 0.5)
-                    assert m[17:].startswith(b"\xff\xd8")
+                    assert struct.unpack(">ffffff", m[1:25]) == (0.25, 0.5, 0.5, 0.5, 0.5, 0.25)
+                    assert m[25:].startswith(b"\xff\xd8")
                     frames += 1
             await ws.send(json.dumps({"t": "ping"}))
             srv.broadcast({"t": "notif", "app": "X", "title": "Oi", "body": ""})

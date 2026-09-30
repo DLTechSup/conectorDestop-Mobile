@@ -143,7 +143,7 @@ class MainActivity : AppCompatActivity(), RemoteService.Listener {
         }
     }
 
-    override fun onFrame(bmp: Bitmap, vx: Float, vy: Float, vw: Float, vh: Float) {}
+    override fun onFrame(bmp: Bitmap, vx: Float, vy: Float, vw: Float, vh: Float, cx: Float, cy: Float) {}
 
     // ---------------------------------------------------------------- ações
     private fun connect() {

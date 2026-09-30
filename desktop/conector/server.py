@@ -203,9 +203,9 @@ class RemoteServer:
                 t0 = time.time()
                 res = await c.capturer.frame(loop, c.monitor, c.maxw, c.quality, c.view)
                 if res:
-                    jpg, used = res
-                    # 0x02 + região (4 floats big-endian) + JPEG
-                    await c.ws.send(b"\x02" + struct.pack(">ffff", *used) + jpg)
+                    jpg, used, cur = res
+                    # 0x02 + região (4 floats) + cursor (2 floats, -1 = desconhecido) + JPEG
+                    await c.ws.send(b"\x02" + struct.pack(">ffffff", *used, *cur) + jpg)
                 await asyncio.sleep(max(0.005, 1.0 / c.fps - (time.time() - t0)))
         except (asyncio.CancelledError, websockets.ConnectionClosed):
             pass
