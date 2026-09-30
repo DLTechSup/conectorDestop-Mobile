@@ -1,4 +1,4 @@
-# Conector Desktop ⇄ Mobile
+# DeskLink — seu PC no bolso
 
 Veja e controle a tela do seu PC (Windows) pelo celular (Android) e receba no celular,
 com som alto/personalizado, **todas as notificações do PC**. Funciona por Wi-Fi na rede
@@ -12,30 +12,36 @@ Diferenciais:
   modo "alto" (toca como alarme, mesmo no silencioso) e lista de apps ignorados.
 
 ```
-desktop/   Programa do PC (Python) — gera ConectorDesktop.exe com build.bat
+desktop/   Programa do PC (Python + interface React) — gera DeskLink.exe com build.bat
+assets/    Logo e ícones (tools/make_assets.py regenera todos, inclusive os do Android)
 android/   App do celular (Kotlin) — gera o APK
 ```
 
 ## PC (Windows)
 
 1. Instale o [Python 3.10+](https://www.python.org/downloads/) (marque *Add Python to PATH*).
-2. Execute `desktop\build.bat` → gera `desktop\dist\ConectorDesktop.exe`.
+2. Execute `desktop\build.bat` → gera `desktop\dist\DeskLink.exe`.
+   (A interface React já vem compilada em `desktop/ui/dist`; se o Node.js estiver instalado o
+   script recompila. Para editar a interface: `cd desktop/ui && npm install && npm run dev`.)
    (Para testar sem gerar o exe: `desktop\run_dev.bat`.)
-3. Abra o `ConectorDesktop.exe`. Permita o acesso no Firewall (redes privadas) ou rode
+3. Abra o `DeskLink.exe`. Permita o acesso no Firewall (redes privadas) ou rode
    `liberar_firewall.bat` como administrador. Fechar a janela minimiza para a bandeja.
 4. A janela mostra um **QR code**, a **chave de acesso** e os endereços do PC.
 
 ## Celular (Android)
 
 Sem Android Studio: envie o repositório ao GitHub e baixe o APK em
-*Actions → Build APK → ConectorMobile-debug-apk* (ou rode o workflow manualmente).
+*Actions → Build APK → DeskLink-debug-apk* (ou rode o workflow manualmente).
 Com Android Studio: abra a pasta `android/`, *Build → Build APK(s)*.
 
 1. Instale o APK (permita "fontes desconhecidas") e aceite as permissões de notificação.
 2. **Ler QR code do PC** (ou digite endereço, porta e chave) → conecta e abre a tela.
-3. Toque = clique · toque duplo = duplo clique · segurar = botão direito · arrastar = mover o
-   cursor · dois dedos = rolar · *Arrastar: ON* = segurar o botão esquerdo (selecionar/mover
-   janelas) · *Teclado* / *Teclas* = digitar e atalhos (Ctrl+C, Alt+Tab, Win…).
+3. **Zoom:** pinça para ampliar (até 6×) e dois dedos para mover; o PC reenquadra a região
+   ampliada na resolução real, então fica nítido. O botão de setas nos cantos volta a 1×.
+   Toque = clique · toque duplo = duplo clique · segurar = botão direito · arrastar = mover o
+   cursor. O botão de modo alterna **Mouse → Arrastar** (segura o botão esquerdo, para selecionar
+   e mover janelas) **→ Rolar** (deslizar = roda do mouse). *Teclado* / *Teclas* = digitar e
+   atalhos (Ctrl+C, Alt+Tab, Win…).
 4. Na tela inicial do app, configure o **som das notificações** e desative a
    **otimização de bateria** (evita que Xiaomi/Samsung/Huawei matem a conexão).
 
@@ -70,4 +76,5 @@ conexão com reconexão automática; a `ViewerActivity` só pede vídeo enquanto
 - Não há tela de bloqueio/UAC (janelas elevadas) nem Ctrl+Alt+Del — limitação do Windows.
 - Notificações: dependem do banco interno do Windows; apps com notificações desativadas no
   Windows não aparecem. Sem áudio do PC e sem transferência de arquivos (ainda).
-- Sem zoom na tela remota (use o celular na horizontal).
+- A janela do DeskLink usa o WebView2 do Windows (já vem no Windows 10/11 atualizado).
+  Se ele faltar, o programa abre a interface no navegador padrão.
