@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary_container">#312E81</color>
+    <color name="on_primary_container">#E0E7FF</color>
+    <color name="bg">#0B1020</color>
+    <color name="surface">#131A30</color>
+    <color name="surface_variant">#182140</color>
+    <color name="text">#E8ECF8</color>
+    <color name="muted">#8A96B8</color>
+    <color name="outline">#222C4D</color>
+</resources>

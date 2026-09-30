@@ -1,25 +1,21 @@
 package com.dltechsup.conector
 
 import android.graphics.Bitmap
-import android.graphics.Color
 import android.os.Bundle
-import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
-import android.widget.Button
-import android.widget.FrameLayout
-import android.widget.HorizontalScrollView
-import android.widget.LinearLayout
-import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.dltechsup.conector.databinding.ActivityViewerBinding
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 
 /**
  * Tela remota. Sair desta tela (voltar / home) NÃO encerra a sessão:
@@ -27,12 +23,8 @@ import org.json.JSONObject
  */
 class ViewerActivity : AppCompatActivity(), RemoteService.Listener, RemoteView.Output {
 
+    private lateinit var b: ActivityViewerBinding
     private lateinit var prefs: Prefs
-    private lateinit var view: RemoteView
-    private lateinit var status: TextView
-    private lateinit var bar: LinearLayout
-    private lateinit var keysRow: LinearLayout
-    private lateinit var dragBtn: Button
     private var gotFrame = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,33 +32,36 @@ class ViewerActivity : AppCompatActivity(), RemoteService.Listener, RemoteView.O
         prefs = Prefs(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        b = ActivityViewerBinding.inflate(layoutInflater)
+        setContentView(b.root)
 
-        view = RemoteView(this).also { it.output = this }
-        status = TextView(this).apply {
-            setTextColor(Color.WHITE); textSize = 16f; gravity = Gravity.CENTER
-            setBackgroundColor(0x99000000.toInt()); setPadding(24, 16, 24, 16)
+        b.remote.output = this
+        b.btnKeyboard.setOnClickListener { toggleKeyboard() }
+        b.btnKeys.setOnClickListener {
+            b.keysPanel.visibility = if (b.keysPanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
         }
-
-        bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setBackgroundColor(0xCC202020.toInt()) }
-        addBtn("⌨ Teclado") { toggleKeyboard() }
-        addBtn("Teclas") { keysRow.visibility = if (keysRow.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
-        dragBtn = addBtn("Arrastar: OFF") {
-            view.dragMode = !view.dragMode
-            dragBtn.text = "Arrastar: " + if (view.dragMode) "ON" else "OFF"
-        }
-        addBtn("Tela") { cycleMonitor() }
-        addBtn("Qualidade: ${RemoteService.QUALITY_NAMES[prefs.quality]}") { b ->
+        b.btnMode.setOnClickListener { cycleMode() }
+        b.btnMonitor.setOnClickListener { cycleMonitor() }
+        b.btnQuality.setOnClickListener {
             prefs.quality = (prefs.quality + 1) % RemoteService.QUALITY.size
-            (b as Button).text = "Qualidade: ${RemoteService.QUALITY_NAMES[prefs.quality]}"
             RemoteService.instance?.sendVideo()
+            toast("Qualidade: ${RemoteService.QUALITY_NAMES[prefs.quality]}")
         }
-        addBtn("Ocultar") { bar.visibility = View.GONE; keysRow.visibility = View.GONE; showHandle(true) }
-        addBtn("Sair") { confirmExit() }
+        b.btnFit.setOnClickListener { b.remote.resetZoom() }
+        b.btnHide.setOnClickListener { setToolbarVisible(false) }
+        b.btnShow.setOnClickListener { setToolbarVisible(true) }
+        b.btnExit.setOnClickListener { confirmExit() }
+        buildKeysRow()
+    }
 
-        keysRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; setBackgroundColor(0xCC303030.toInt()); visibility = View.GONE
-        }
-        listOf(
+    private fun setToolbarVisible(show: Boolean) {
+        b.toolbar.visibility = if (show) View.VISIBLE else View.GONE
+        b.btnShow.visibility = if (show) View.GONE else View.VISIBLE
+        if (!show) b.keysPanel.visibility = View.GONE
+    }
+
+    private fun buildKeysRow() {
+        val keys = listOf(
             "Esc" to { key("esc") }, "Tab" to { key("tab") }, "Enter" to { key("enter") },
             "⌫" to { key("backspace") }, "Del" to { key("delete") },
             "←" to { key("left") }, "↑" to { key("up") }, "↓" to { key("down") }, "→" to { key("right") },
@@ -74,40 +69,22 @@ class ViewerActivity : AppCompatActivity(), RemoteService.Listener, RemoteView.O
             "Ctrl+C" to { key("c", "ctrl") }, "Ctrl+V" to { key("v", "ctrl") },
             "Ctrl+A" to { key("a", "ctrl") }, "Ctrl+Z" to { key("z", "ctrl") },
             "F5" to { key("f5") }, "Alt+F4" to { key("f4", "alt") },
-        ).forEach { (label, act) ->
-            keysRow.addView(smallBtn(label) { act() })
+        )
+        val gap = (6 * resources.displayMetrics.density).toInt()
+        keys.forEach { (label, act) ->
+            val btn = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonStyle).apply {
+                text = label
+                isAllCaps = false
+                textSize = 13f
+                minWidth = 0; minimumWidth = 0
+                setTextColor(0xFFFFFFFF.toInt())
+                backgroundTintList = android.content.res.ColorStateList.valueOf(0x33FFFFFF)
+                setOnClickListener { act() }
+            }
+            val lp = android.widget.LinearLayout.LayoutParams(-2, -2)
+            lp.marginEnd = gap
+            b.keysRow.addView(btn, lp)
         }
-
-        val top = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        top.addView(HorizontalScrollView(this).apply { addView(bar) })
-        top.addView(HorizontalScrollView(this).apply { addView(keysRow) })
-
-        handle = Button(this).apply {
-            text = "≡"; visibility = View.GONE; alpha = 0.6f
-            setOnClickListener { bar.visibility = View.VISIBLE; showHandle(false) }
-        }
-
-        val root = FrameLayout(this)
-        root.addView(view, FrameLayout.LayoutParams(-1, -1))
-        root.addView(top, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
-        root.addView(handle, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END))
-        root.addView(status, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
-        setContentView(root)
-    }
-
-    private lateinit var handle: Button
-    private fun showHandle(show: Boolean) { handle.visibility = if (show) View.VISIBLE else View.GONE }
-
-    private fun addBtn(label: String, onClick: (View) -> Unit): Button {
-        val b = smallBtn(label, onClick)
-        bar.addView(b)
-        return b
-    }
-
-    private fun smallBtn(label: String, onClick: (View) -> Unit) = Button(this).apply {
-        text = label; isAllCaps = false; textSize = 13f
-        minWidth = 0; minimumWidth = 0
-        setOnClickListener(onClick)
     }
 
     // ------------------------------------------------------------ ciclo de vida
@@ -141,15 +118,20 @@ class ViewerActivity : AppCompatActivity(), RemoteService.Listener, RemoteView.O
     override fun onState(state: RemoteService.State, text: String) {
         when {
             state == RemoteService.State.IDLE -> finish()
-            state == RemoteService.State.CONNECTED && gotFrame -> status.visibility = View.GONE
-            state == RemoteService.State.CONNECTED -> { status.text = "Aguardando imagem…"; status.visibility = View.VISIBLE }
-            else -> { status.text = text; status.visibility = View.VISIBLE }
+            state == RemoteService.State.CONNECTED && gotFrame -> b.loading.visibility = View.GONE
+            state == RemoteService.State.CONNECTED -> showLoading("Aguardando imagem…")
+            else -> showLoading(text)
         }
     }
 
-    override fun onFrame(bmp: Bitmap) {
-        if (!gotFrame) { gotFrame = true; status.visibility = View.GONE }
-        view.setFrame(bmp)
+    private fun showLoading(text: String) {
+        b.loadingText.text = text
+        b.loading.visibility = View.VISIBLE
+    }
+
+    override fun onFrame(bmp: Bitmap, vx: Float, vy: Float, vw: Float, vh: Float) {
+        if (!gotFrame) { gotFrame = true; b.loading.visibility = View.GONE }
+        b.remote.setFrame(bmp, vx, vy, vw, vh)
     }
 
     // ------------------------------------------------------------ RemoteView.Output
@@ -175,25 +157,57 @@ class ViewerActivity : AppCompatActivity(), RemoteService.Listener, RemoteView.O
         RemoteService.instance?.send(JSONObject().put("t", "text").put("s", s))
     }
 
+    override fun view(x: Float, y: Float, w: Float, h: Float) {
+        RemoteService.viewport = floatArrayOf(x, y, w, h)
+        RemoteService.instance?.sendVideo()
+    }
+
+    override fun zoomChanged(zoom: Float) {
+        if (zoom > 1.02f) {
+            b.zoomBadge.text = String.format(Locale.US, "%.1f×", zoom)
+            b.zoomBadge.visibility = View.VISIBLE
+        } else {
+            b.zoomBadge.visibility = View.GONE
+        }
+    }
+
     // ------------------------------------------------------------ ações
     private fun toggleKeyboard() {
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-        view.requestFocus()
-        imm.showSoftInput(view, InputMethodManager.SHOW_FORCED)
+        b.remote.requestFocus()
+        imm.showSoftInput(b.remote, InputMethodManager.SHOW_FORCED)
+    }
+
+    private fun cycleMode() {
+        val next = when (b.remote.mode) {
+            RemoteView.Mode.MOUSE -> RemoteView.Mode.DRAG
+            RemoteView.Mode.DRAG -> RemoteView.Mode.SCROLL
+            RemoteView.Mode.SCROLL -> RemoteView.Mode.MOUSE
+        }
+        b.remote.mode = next
+        val (icon, label) = when (next) {
+            RemoteView.Mode.MOUSE -> R.drawable.ic_pointer to "Mouse: toque = clique, segurar = botão direito"
+            RemoteView.Mode.DRAG -> R.drawable.ic_drag to "Arrastar: mover o dedo segura o botão esquerdo"
+            RemoteView.Mode.SCROLL -> R.drawable.ic_scroll to "Rolar: deslize para cima/baixo"
+        }
+        b.btnMode.setImageResource(icon)
+        toast(label)
     }
 
     private fun cycleMonitor() {
         val n = RemoteService.monitors
-        if (n <= 1) return
+        if (n <= 1) { toast("Só há um monitor"); return }
         prefs.monitor = prefs.monitor % n + 1
         gotFrame = false
+        b.remote.resetZoom()
         RemoteService.instance?.sendVideo()
-        status.text = "Monitor ${prefs.monitor} de $n"
-        status.visibility = View.VISIBLE
+        toast("Monitor ${prefs.monitor} de $n")
     }
 
+    private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
+
     private fun confirmExit() {
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("Sair e desconectar?")
             .setMessage("A conexão com o PC será encerrada e você deixará de receber as notificações dele.")
             .setPositiveButton("Sair e desconectar") { _, _ ->

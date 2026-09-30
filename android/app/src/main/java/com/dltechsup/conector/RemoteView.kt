@@ -7,36 +7,58 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.text.InputType
+import android.util.AttributeSet
 import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
+import kotlin.math.abs
 
-/** Mostra a tela do PC e converte toques em ações de mouse/teclado. */
-class RemoteView(ctx: Context) : View(ctx) {
+/**
+ * Mostra a tela do PC, converte toques em mouse/teclado e permite ZOOM:
+ * pinça para ampliar, dois dedos para mover. A região visível é enviada ao PC,
+ * que recorta na resolução nativa (imagem ampliada nítida, não borrada).
+ */
+class RemoteView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = null) : View(ctx, attrs) {
 
     interface Output {
         fun mouse(action: String, x: Float, y: Float, button: String = "left")
         fun scroll(dy: Int)
         fun key(name: String)
         fun text(s: String)
+        /** Região visível mudou (zoom/pan): normalizada 0..1 sobre a tela do PC. */
+        fun view(x: Float, y: Float, w: Float, h: Float)
+        fun zoomChanged(zoom: Float)
     }
 
+    enum class Mode { MOUSE, DRAG, SCROLL }
+
     var output: Output? = null
-    /** true: arrastar com o dedo = segurar botão esquerdo (selecionar / mover janelas). */
-    var dragMode = false
+    var mode = Mode.MOUSE
+
+    val zoomLevel: Float get() = zoom
 
     private var bitmap: Bitmap? = null
-    private val dest = RectF()
-    private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private var fx = 0f; private var fy = 0f; private var fw = 1f; private var fh = 1f // região do quadro
+    private var zoom = 1f
+    private var vx = 0f; private var vy = 0f // canto sup. esq. da região visível
+    private val fit = RectF()
+    private val dst = RectF()
+    private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+
     private var lastMove = 0L
-    private var twoFingerY = 0f
-    private var scrollAcc = 0f
     private var multi = false
     private var dragging = false
+    private var scrollAcc = 0f
+    private var lastTouchY = 0f
+    private var lastFx = 0f
+    private var lastFy = 0f
+    private var lastViewSent = 0L
+    private var viewPending = false
 
     init {
         setBackgroundColor(Color.BLACK)
@@ -44,72 +66,134 @@ class RemoteView(ctx: Context) : View(ctx) {
         isFocusableInTouchMode = true
     }
 
-    fun setFrame(b: Bitmap) {
+    // ------------------------------------------------------------ desenho / geometria
+    fun setFrame(b: Bitmap, x: Float, y: Float, w: Float, h: Float) {
         bitmap = b
+        fx = x; fy = y; fw = w; fh = h
         invalidate()
     }
 
-    private fun fit() {
-        val b = bitmap ?: return
-        val s = minOf(width.toFloat() / b.width, height.toFloat() / b.height)
-        val w = b.width * s
-        val h = b.height * s
-        dest.set((width - w) / 2, (height - h) / 2, (width + w) / 2, (height + h) / 2)
+    private fun computeFit(): Boolean {
+        val b = bitmap ?: return false
+        if (width == 0 || height == 0) return false
+        // o recorte tem a mesma proporção da tela; usa a do quadro
+        val aspect = (b.width / fw) / (b.height / fh)
+        val vw = width.toFloat(); val vh = height.toFloat()
+        val w: Float; val h: Float
+        if (vw / vh > aspect) { h = vh; w = vh * aspect } else { w = vw; h = vw / aspect }
+        fit.set((vw - w) / 2, (vh - h) / 2, (vw + w) / 2, (vh + h) / 2)
+        return true
     }
 
     override fun onDraw(c: Canvas) {
         val b = bitmap ?: return
-        fit()
-        c.drawBitmap(b, null, dest, paint)
+        if (!computeFit()) return
+        val fwid = fit.width(); val fhei = fit.height()
+        dst.left = fit.left + (fx - vx) * zoom * fwid
+        dst.top = fit.top + (fy - vy) * zoom * fhei
+        dst.right = dst.left + fw * zoom * fwid
+        dst.bottom = dst.top + fh * zoom * fhei
+        c.save()
+        c.clipRect(fit)
+        c.drawBitmap(b, null, dst, paint)
+        c.restore()
     }
 
-    /** Coordenadas normalizadas (0..1) dentro da imagem, ou null se fora dela. */
-    private fun norm(e: MotionEvent, idx: Int = 0): Pair<Float, Float>? {
-        if (bitmap == null) return null
-        fit()
-        val x = (e.getX(idx) - dest.left) / dest.width()
-        val y = (e.getY(idx) - dest.top) / dest.height()
-        return Pair(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f))
+    /** Toque na tela do celular -> coordenadas normalizadas da tela inteira do PC. */
+    private fun norm(x: Float, y: Float): Pair<Float, Float>? {
+        if (!computeFit()) return null
+        val u = vx + ((x - fit.left) / fit.width()) / zoom
+        val v = vy + ((y - fit.top) / fit.height()) / zoom
+        return Pair(u.coerceIn(0f, 1f), v.coerceIn(0f, 1f))
     }
 
+    // ------------------------------------------------------------ zoom
+    private fun clampView() {
+        val size = 1f / zoom
+        vx = vx.coerceIn(0f, 1f - size)
+        vy = vy.coerceIn(0f, 1f - size)
+    }
+
+    fun resetZoom() {
+        zoom = 1f; vx = 0f; vy = 0f
+        applyView(force = true)
+    }
+
+    private fun applyView(force: Boolean = false) {
+        clampView()
+        invalidate()
+        output?.zoomChanged(zoom)
+        val now = System.currentTimeMillis()
+        if (force || now - lastViewSent >= 90) {
+            lastViewSent = now
+            viewPending = false
+            output?.view(vx, vy, 1f / zoom, 1f / zoom)
+        } else if (!viewPending) { // garante o envio final do último estado
+            viewPending = true
+            postDelayed({
+                if (viewPending) {
+                    viewPending = false
+                    lastViewSent = System.currentTimeMillis()
+                    output?.view(vx, vy, 1f / zoom, 1f / zoom)
+                }
+            }, 100)
+        }
+    }
+
+    private val scaleDetector = ScaleGestureDetector(ctx, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScaleBegin(d: ScaleGestureDetector): Boolean {
+            lastFx = d.focusX; lastFy = d.focusY
+            return computeFit()
+        }
+
+        override fun onScale(d: ScaleGestureDetector): Boolean {
+            if (!computeFit()) return false
+            val oldZoom = zoom
+            // ponto da tela do PC que estava sob o foco anterior...
+            val u = vx + ((lastFx - fit.left) / fit.width()) / oldZoom
+            val v = vy + ((lastFy - fit.top) / fit.height()) / oldZoom
+            zoom = (zoom * d.scaleFactor).coerceIn(1f, MAX_ZOOM)
+            // ...deve acompanhar o foco atual (zoom ancorado + movimento de dois dedos)
+            vx = u - ((d.focusX - fit.left) / fit.width()) / zoom
+            vy = v - ((d.focusY - fit.top) / fit.height()) / zoom
+            lastFx = d.focusX; lastFy = d.focusY
+            applyView()
+            return true
+        }
+
+        override fun onScaleEnd(d: ScaleGestureDetector) {
+            applyView(force = true)
+        }
+    }).also { it.isQuickScaleEnabled = false }
+
+    // ------------------------------------------------------------ toques
     private val detector = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent) = true
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-            norm(e)?.let { output?.mouse("click", it.first, it.second) }
+            norm(e.x, e.y)?.let { output?.mouse("click", it.first, it.second) }
             return true
         }
 
         override fun onDoubleTap(e: MotionEvent): Boolean {
-            norm(e)?.let { output?.mouse("dclick", it.first, it.second) }
+            norm(e.x, e.y)?.let { output?.mouse("dclick", it.first, it.second) }
             return true
         }
 
         override fun onLongPress(e: MotionEvent) {
-            norm(e)?.let { output?.mouse("rclick", it.first, it.second, "right") }
+            norm(e.x, e.y)?.let { output?.mouse("rclick", it.first, it.second, "right") }
         }
     })
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
-        if (e.pointerCount >= 2) {
-            // dois dedos: rolagem (roda do mouse)
-            val y = (e.getY(0) + e.getY(1)) / 2
+        if (e.pointerCount >= 2 || scaleDetector.isInProgress) {
             if (!multi) {
                 multi = true
-                twoFingerY = y
-                scrollAcc = 0f
                 if (dragging) { // cancela arrasto em andamento
-                    norm(e)?.let { output?.mouse("up", it.first, it.second) }
+                    norm(e.x, e.y)?.let { output?.mouse("up", it.first, it.second) }
                     dragging = false
                 }
-            } else if (e.actionMasked == MotionEvent.ACTION_MOVE) {
-                scrollAcc += y - twoFingerY
-                twoFingerY = y
-                val step = 40f * resources.displayMetrics.density / 3f
-                while (kotlin.math.abs(scrollAcc) >= step) {
-                    output?.scroll(if (scrollAcc > 0) 1 else -1)
-                    scrollAcc -= if (scrollAcc > 0) step else -step
-                }
             }
+            scaleDetector.onTouchEvent(e)
             return true
         }
         if (multi) { // sobrou um dedo depois do gesto de 2: ignora até soltar tudo
@@ -117,9 +201,9 @@ class RemoteView(ctx: Context) : View(ctx) {
             return true
         }
 
-        val p = norm(e) ?: return true
-        if (dragMode) {
-            when (e.actionMasked) {
+        val p = norm(e.x, e.y) ?: return true
+        when (mode) {
+            Mode.DRAG -> when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     output?.mouse("move", p.first, p.second)
                     output?.mouse("down", p.first, p.second)
@@ -131,10 +215,26 @@ class RemoteView(ctx: Context) : View(ctx) {
                     dragging = false
                 }
             }
-            return true
+            Mode.SCROLL -> {
+                detector.onTouchEvent(e)
+                when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> { lastTouchY = e.y; scrollAcc = 0f }
+                    MotionEvent.ACTION_MOVE -> {
+                        scrollAcc += e.y - lastTouchY
+                        lastTouchY = e.y
+                        val step = 22f * resources.displayMetrics.density
+                        while (abs(scrollAcc) >= step) {
+                            output?.scroll(if (scrollAcc > 0) 1 else -1)
+                            scrollAcc -= if (scrollAcc > 0) step else -step
+                        }
+                    }
+                }
+            }
+            Mode.MOUSE -> {
+                detector.onTouchEvent(e)
+                if (e.actionMasked == MotionEvent.ACTION_MOVE) throttledMove(p)
+            }
         }
-        detector.onTouchEvent(e)
-        if (e.actionMasked == MotionEvent.ACTION_MOVE) throttledMove(p)
         return true
     }
 
@@ -194,5 +294,9 @@ class RemoteView(ctx: Context) : View(ctx) {
                 return true
             }
         }
+    }
+
+    companion object {
+        const val MAX_ZOOM = 6f
     }
 }

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#4F46E5</color>
+    <color name="primary_dark">#3730A3</color>
+    <color name="primary_container">#E0E7FF</color>
+    <color name="on_primary_container">#312E81</color>
+    <color name="cyan">#06B6D4</color>
+    <color name="ok">#22C55E</color>
+    <color name="warn">#F59E0B</color>
+    <color name="danger">#EF4444</color>
+    <color name="idle">#94A3B8</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <color name="bg">#F4F6FB</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_variant">#EEF1F8</color>
+    <color name="text">#0F172A</color>
+    <color name="muted">#64748B</color>
+    <color name="outline">#E2E8F0</color>
+
+    <color name="toolbar_bg">#E6111827</color>
+    <color name="ic_launcher_background">#4F46E5</color>
+</resources>

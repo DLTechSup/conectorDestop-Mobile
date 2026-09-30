@@ -95,6 +95,9 @@ def main():
         m = m.resize((px, px), Image.LANCZOS)
         r.putalpha(Image.composite(r.getchannel("A"), Image.new("L", (px, px), 0), m))
         r.save(os.path.join(d, "ic_launcher_round.png"))
+    nodpi = os.path.join(res, "drawable-nodpi")
+    os.makedirs(nodpi, exist_ok=True)
+    draw(256).save(os.path.join(nodpi, "logo.png"))
     draw(512).save(os.path.join(ROOT, "assets/play-store-512.png"))
 
 

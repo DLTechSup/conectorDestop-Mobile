@@ -1,3 +1,4 @@
 <resources>
-    <string name="app_name">Conector Mobile</string>
+    <string name="app_name">DeskLink</string>
+    <string name="tagline">Seu PC no bolso</string>
 </resources>

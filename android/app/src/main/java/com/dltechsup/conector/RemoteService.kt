@@ -48,7 +48,7 @@ class RemoteService : Service() {
 
     interface Listener {
         fun onState(state: State, text: String) {}
-        fun onFrame(bmp: Bitmap) {}
+        fun onFrame(bmp: Bitmap, vx: Float, vy: Float, vw: Float, vh: Float) {}
         fun onInfo(pcName: String, monitors: Int, control: Boolean) {}
     }
 
@@ -68,6 +68,8 @@ class RemoteService : Service() {
         @Volatile var pcName = ""
         @Volatile var monitors = 1
         @Volatile var control = true
+        /** Zoom: região visível da tela do PC (x, y, w, h) normalizada. O PC recorta em alta resolução. */
+        @Volatile var viewport = floatArrayOf(0f, 0f, 1f, 1f)
 
         fun start(ctx: Context) {
             val i = Intent(ctx, RemoteService::class.java).setAction(ACTION_CONNECT)
@@ -96,7 +98,7 @@ class RemoteService : Service() {
     private var netCallback: ConnectivityManager.NetworkCallback? = null
     private var pcNotifId = 100
 
-    private val latest = AtomicReference<Bitmap?>()
+    private val latest = AtomicReference<Frame?>()
     private val posted = AtomicBoolean(false)
 
     // ---------------------------------------------------------------- ciclo de vida
@@ -148,7 +150,9 @@ class RemoteService : Service() {
     fun sendVideo() {
         val (w, fps, q) = QUALITY[prefs.quality.coerceIn(0, QUALITY.size - 1)]
         send(JSONObject().put("t", "video").put("on", videoWanted).put("maxw", w)
-            .put("fps", fps).put("q", q).put("monitor", prefs.monitor))
+            .put("fps", fps).put("q", q).put("monitor", prefs.monitor)
+            .put("vx", viewport[0].toDouble()).put("vy", viewport[1].toDouble())
+            .put("vw", viewport[2].toDouble()).put("vh", viewport[3].toDouble()))
     }
 
     fun send(o: JSONObject) {
@@ -284,17 +288,24 @@ class RemoteService : Service() {
         }
     }
 
+    /** Quadro: 0x02 + região (4 floats big-endian) + JPEG. */
     private fun onBinary(data: ByteArray) {
-        if (data.size < 2 || data[0].toInt() != 1) return
-        val bmp = BitmapFactory.decodeByteArray(data, 1, data.size - 1) ?: return
-        latest.set(bmp)
+        if (data.size < 18 || data[0].toInt() != 2) return
+        val bb = java.nio.ByteBuffer.wrap(data, 1, 16)
+        val region = floatArrayOf(bb.float, bb.float, bb.float, bb.float)
+        val bmp = BitmapFactory.decodeByteArray(data, 17, data.size - 17) ?: return
+        latest.set(Frame(bmp, region))
         if (posted.compareAndSet(false, true)) {
             main.post {
                 posted.set(false)
-                latest.getAndSet(null)?.let { b -> listeners.forEach { it.onFrame(b) } }
+                latest.getAndSet(null)?.let { f ->
+                    listeners.forEach { it.onFrame(f.bmp, f.r[0], f.r[1], f.r[2], f.r[3]) }
+                }
             }
         }
     }
+
+    private class Frame(val bmp: Bitmap, val r: FloatArray)
 
     private fun setState(s: State, text: String) {
         state = s
@@ -315,7 +326,7 @@ class RemoteService : Service() {
         SoundPlayer.play(this, prefs)
         val n = NotificationCompat.Builder(this, CH_PC)
             .setSmallIcon(R.drawable.ic_notif)
-            .setContentTitle("PC · $app")
+            .setContentTitle("$app · PC")
             .setContentText(if (body.isEmpty()) title else "$title: $body")
             .setStyle(NotificationCompat.BigTextStyle().bigText(if (body.isEmpty()) title else "$title\n$body"))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -357,7 +368,7 @@ class RemoteService : Service() {
         )
         return NotificationCompat.Builder(this, CH_SESSION)
             .setSmallIcon(R.drawable.ic_notif)
-            .setContentTitle("Conector Mobile")
+            .setContentTitle("DeskLink")
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

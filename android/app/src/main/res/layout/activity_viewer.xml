@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <com.dltechsup.conector.RemoteView
+        android:id="@+id/remote"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Carregando / reconectando -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/loading"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        app:cardBackgroundColor="#E6111827"
+        app:cardCornerRadius="20dp"
+        app:cardElevation="0dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="20dp">
+
+            <com.google.android.material.progressindicator.CircularProgressIndicator
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:indeterminate="true"
+                app:indicatorColor="@color/cyan"
+                app:indicatorSize="28dp"
+                app:trackThickness="3dp" />
+
+            <TextView
+                android:id="@+id/loadingText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:maxWidth="260dp"
+                android:textColor="@color/white"
+                android:textSize="15sp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Barra de ferramentas flutuante -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/toolbar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_margin="12dp"
+        app:cardBackgroundColor="@color/toolbar_bg"
+        app:cardCornerRadius="28dp"
+        app:cardElevation="6dp">
+
+        <HorizontalScrollView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp">
+
+                <ImageButton
+                    android:id="@+id/btnKeyboard"
+                    style="@style/ToolBtn"
+                    android:contentDescription="Teclado"
+                    android:src="@drawable/ic_keyboard" />
+
+                <ImageButton
+                    android:id="@+id/btnKeys"
+                    style="@style/ToolBtn"
+                    android:contentDescription="Teclas e atalhos"
+                    android:src="@drawable/ic_apps" />
+
+                <ImageButton
+                    android:id="@+id/btnMode"
+                    style="@style/ToolBtn"
+                    android:contentDescription="Modo de toque"
+                    android:src="@drawable/ic_pointer" />
+
+                <ImageButton
+                    android:id="@+id/btnMonitor"
+                    style="@style/ToolBtn"
+                    android:contentDescription="Trocar monitor"
+                    android:src="@drawable/ic_monitor" />
+
+                <ImageButton
+                    android:id="@+id/btnQuality"
+                    style="@style/ToolBtn"
+                    android:contentDescription="Qualidade"
+                    android:src="@drawable/ic_tune" />
+
+                <ImageButton
+                    android:id="@+id/btnFit"
+                    style="@style/ToolBtn"
+                    android:contentDescription="Ajustar à tela (zoom 1x)"
+                    android:src="@drawable/ic_fit" />
+
+                <ImageButton
+                    android:id="@+id/btnHide"
+                    style="@style/ToolBtn"
+                    android:contentDescription="Ocultar barra"
+                    android:src="@drawable/ic_expand_less" />
+
+                <ImageButton
+                    android:id="@+id/btnExit"
+                    style="@style/ToolBtn"
+                    android:contentDescription="Sair e desconectar"
+                    android:src="@drawable/ic_power"
+                    android:tint="#FF6B6B" />
+            </LinearLayout>
+        </HorizontalScrollView>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Zoom atual -->
+    <TextView
+        android:id="@+id/zoomBadge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="76dp"
+        android:background="@drawable/bg_zoom_badge"
+        android:paddingStart="12dp"
+        android:paddingTop="5dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="5dp"
+        android:textColor="@color/white"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <!-- Reabrir a barra -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/btnShow"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="12dp"
+        android:contentDescription="Mostrar barra"
+        android:src="@drawable/ic_expand_more"
+        android:visibility="gone"
+        app:backgroundTint="@color/toolbar_bg"
+        app:fabSize="mini"
+        app:tint="@color/white" />
+
+    <!-- Teclas especiais -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/keysPanel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_margin="12dp"
+        android:visibility="gone"
+        app:cardBackgroundColor="@color/toolbar_bg"
+        app:cardCornerRadius="22dp"
+        app:cardElevation="6dp">
+
+        <HorizontalScrollView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/keysRow"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="8dp" />
+        </HorizontalScrollView>
+    </com.google.android.material.card.MaterialCardView>
+</FrameLayout>
