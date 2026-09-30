@@ -1,0 +1,15 @@
+# Python / Desktop
+__pycache__/
+*.pyc
+.venv/
+desktop/build/
+desktop/dist/
+desktop/*.spec
+# Android
+.gradle/
+build/
+local.properties
+*.apk
+.idea/
+*.iml
+captures/
