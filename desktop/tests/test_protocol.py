@@ -23,9 +23,10 @@ class FakeCapturer:
     def reset(self): pass
     def close(self): pass
 
-    async def frame(self, loop, monitor, maxw, q):
+    async def frame(self, loop, monitor, maxw, q, view=(0, 0, 1, 1)):
         FakeCapturer.n += 1
-        return b"\xff\xd8fakejpeg" if FakeCapturer.n < 4 else None
+        FakeCapturer.last_view = view
+        return (b"\xff\xd8fakejpeg", view) if FakeCapturer.n < 4 else None
 
 
 def free_port():
@@ -59,12 +60,16 @@ def test_flow():
             await ws.send(json.dumps({"t": "auth", "key": cfg["key"], "name": "teste"}))
             ok = json.loads(await ws.recv())
             assert ok["t"] == "auth_ok" and ok["monitors"][0]["w"] == 1920
-            await ws.send(json.dumps({"t": "video", "on": True, "fps": 30}))
+            await ws.send(json.dumps({"t": "video", "on": True, "fps": 30,
+                                      "vx": 0.25, "vy": 0.5, "vw": 0.5, "vh": 0.5}))
             frames = 0
             while frames < 3:
                 m = await asyncio.wait_for(ws.recv(), 3)
                 if isinstance(m, bytes):
-                    assert m[0] == 1
+                    assert m[0] == 2
+                    import struct
+                    assert struct.unpack(">ffff", m[1:17]) == (0.25, 0.5, 0.5, 0.5)
+                    assert m[17:].startswith(b"\xff\xd8")
                     frames += 1
             await ws.send(json.dumps({"t": "ping"}))
             srv.broadcast({"t": "notif", "app": "X", "title": "Oi", "body": ""})
@@ -108,5 +113,40 @@ def test_watcher(tmp_path=None):
     assert [o["title"] for o in out] == ["nova"] and out[0]["app"] == "Zap"
 
 
+
+
+def test_ui_api():
+    import urllib.error
+    import urllib.request
+    from conector.controller import Controller
+    from conector.uiserver import UIServer
+    ctl = Controller()
+    ui = UIServer(ctl)
+    base = f"http://127.0.0.1:{ui.port}"
+
+    def post(name, body=None, token=None):
+        req = urllib.request.Request(f"{base}/api/{name}", json.dumps(body or {}).encode(),
+                                     {"X-Token": token or "", "Content-Type": "application/json"})
+        return urllib.request.urlopen(req)
+
+    try:
+        post("state", token="errado")
+        assert False, "deveria recusar"
+    except urllib.error.HTTPError as e:
+        assert e.code == 403
+    st = json.loads(post("state", token=ui.token).read())
+    assert st["name"] == "DeskLink" and st["key"] == ctl.cfg["key"]
+    post("set_option", {"key": "allow_control", "value": False}, ui.token)
+    assert ctl.cfg["allow_control"] is False
+    try:
+        post("set_option", {"key": "port", "value": 1}, ui.token)
+        assert False
+    except urllib.error.HTTPError as e:
+        assert e.code == 400
+    assert b"<div id=\"root\">" in urllib.request.urlopen(base + "/").read()
+    assert urllib.request.urlopen(base + "/../../etc/passwd").status == 200  # cai no index, nunca fora
+    ctl.shutdown(); ui.close()
+
+
 if __name__ == "__main__":
-    test_payload(); test_watcher(); test_flow(); print("OK")
+    test_payload(); test_watcher(); test_flow(); test_ui_api(); print("OK")

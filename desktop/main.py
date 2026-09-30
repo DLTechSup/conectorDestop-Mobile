@@ -8,8 +8,8 @@ def main():
             ctypes.windll.shcore.SetProcessDpiAwareness(2)
         except Exception:
             ctypes.windll.user32.SetProcessDPIAware()
-    from conector.gui import App
-    App(start_minimized="--minimized" in sys.argv).run()
+    from conector.app import run
+    run(start_minimized="--minimized" in sys.argv)
 
 
 if __name__ == "__main__":

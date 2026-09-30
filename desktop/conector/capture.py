@@ -49,16 +49,32 @@ class Capturer:
     def reset(self):
         self._last = None
 
-    async def frame(self, loop, monitor, maxw, quality):
-        return await loop.run_in_executor(self._ex, self._grab, monitor, maxw, quality)
+    async def frame(self, loop, monitor, maxw, quality, view=(0.0, 0.0, 1.0, 1.0)):
+        """Retorna (jpeg, view_usada) ou None se nada mudou.
 
-    def _grab(self, monitor, maxw, quality):
+        `view` = região (x, y, w, h) normalizada 0..1 da tela — é o zoom: o recorte
+        é feito na resolução nativa, então a imagem ampliada continua nítida.
+        """
+        return await loop.run_in_executor(self._ex, self._grab, monitor, maxw, quality, view)
+
+    def _grab(self, monitor, maxw, quality, view):
         if self._sct is None:
             self._sct = mss.mss()
         mons = self._sct.monitors
         m = mons[monitor] if 0 < monitor < len(mons) else mons[1]
         shot = self._sct.grab(m)
         img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+        vx, vy, vw, vh = view
+        vw = min(max(vw, 0.05), 1.0)
+        vh = min(max(vh, 0.05), 1.0)
+        vx = min(max(vx, 0.0), 1.0 - vw)
+        vy = min(max(vy, 0.0), 1.0 - vh)
+        W, H = img.size
+        box = (int(vx * W), int(vy * H), max(int(vx * W) + 1, int((vx + vw) * W)),
+               max(int(vy * H) + 1, int((vy + vh) * H)))
+        if box != (0, 0, W, H):
+            img = img.crop(box)
+        used = (box[0] / W, box[1] / H, (box[2] - box[0]) / W, (box[3] - box[1]) / H)
         scale = 1.0
         if img.width > maxw:
             scale = maxw / img.width
@@ -66,11 +82,11 @@ class Capturer:
         cur = cursor_pos()
         cpos = None
         if cur:
-            cx = int((cur[0] - m["left"]) * scale)
-            cy = int((cur[1] - m["top"]) * scale)
+            cx = int((cur[0] - m["left"] - box[0]) * scale)
+            cy = int((cur[1] - m["top"] - box[1]) * scale)
             if 0 <= cx < img.width and 0 <= cy < img.height:
                 cpos = (cx, cy)
-        digest = zlib.crc32(img.tobytes()) ^ hash(cpos)
+        digest = zlib.crc32(img.tobytes()) ^ hash((cpos, used))
         if digest == self._last:
             return None
         self._last = digest
@@ -80,7 +96,7 @@ class Capturer:
             d.polygon(pts, fill="white", outline="black")
         buf = io.BytesIO()
         img.save(buf, "JPEG", quality=quality)
-        return buf.getvalue()
+        return buf.getvalue(), used
 
     def close(self):
         def _c():

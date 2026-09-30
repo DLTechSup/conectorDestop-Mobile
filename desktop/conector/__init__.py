@@ -1,2 +1,2 @@
-APP_NAME = "Conector Desktop"
-VERSION = "0.1.0"
+APP_NAME = "DeskLink"
+VERSION = "0.2.0"

@@ -19,11 +19,22 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m pytest tests -q
         continue-on-error: true
-      - run: >
-          pyinstaller --noconfirm --clean --onefile --noconsole --name ConectorDesktop
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build interface React
+        working-directory: desktop/ui
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: Build DeskLink.exe
+        run: >
+          pyinstaller --noconfirm --clean --onefile --noconsole --name DeskLink
+          --icon ../assets/icon.ico
+          --add-data "ui/dist;ui/dist" --add-data "../assets/icon.ico;assets"
           --hidden-import pystray._win32 --collect-submodules websockets
-          --collect-submodules pynput main.py
+          --collect-submodules pynput --collect-all webview main.py
       - uses: actions/upload-artifact@v4
         with:
-          name: ConectorDesktop-exe
-          path: desktop/dist/ConectorDesktop.exe
+          name: DeskLink-exe
+          path: desktop/dist/DeskLink.exe

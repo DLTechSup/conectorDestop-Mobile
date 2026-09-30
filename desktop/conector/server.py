@@ -4,6 +4,7 @@ import hmac
 import json
 import socket
 import ssl
+import struct
 import threading
 import time
 
@@ -24,6 +25,7 @@ class Client:
         self.ip = ws.remote_address[0] if ws.remote_address else "?"
         self.video = False
         self.maxw, self.fps, self.quality, self.monitor = 1280, 15, 55, 1
+        self.view = (0.0, 0.0, 1.0, 1.0)  # zoom: região visível (x, y, w, h)
         self.evt = asyncio.Event()
         self.capturer = capture.Capturer()
         self.since = time.time()
@@ -173,6 +175,8 @@ class RemoteServer:
             c.fps = min(max(int(m.get("fps", c.fps)), 1), 30)
             c.quality = min(max(int(m.get("q", c.quality)), 10), 95)
             c.monitor = int(m.get("monitor", c.monitor))
+            c.view = tuple(float(m.get(k, d)) for k, d in
+                           (("vx", 0.0), ("vy", 0.0), ("vw", 1.0), ("vh", 1.0)))
             c.capturer.reset()
             (c.evt.set if c.video else c.evt.clear)()
         elif t == "ping":
@@ -197,9 +201,11 @@ class RemoteServer:
             while True:
                 await c.evt.wait()
                 t0 = time.time()
-                jpg = await c.capturer.frame(loop, c.monitor, c.maxw, c.quality)
-                if jpg:
-                    await c.ws.send(b"\x01" + jpg)
+                res = await c.capturer.frame(loop, c.monitor, c.maxw, c.quality, c.view)
+                if res:
+                    jpg, used = res
+                    # 0x02 + região (4 floats big-endian) + JPEG
+                    await c.ws.send(b"\x02" + struct.pack(">ffff", *used) + jpg)
                 await asyncio.sleep(max(0.005, 1.0 / c.fps - (time.time() - t0)))
         except (asyncio.CancelledError, websockets.ConnectionClosed):
             pass

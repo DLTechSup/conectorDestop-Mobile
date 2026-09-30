@@ -121,4 +121,5 @@ def pair_url(cfg: Config, fingerprint: str) -> str:
 
 
 def resource_dir() -> Path:
-    return Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
+    """Raiz dos recursos: pasta temporária do PyInstaller ou a pasta desktop/ em desenvolvimento."""
+    return Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))

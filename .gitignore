@@ -13,3 +13,5 @@ local.properties
 .idea/
 *.iml
 captures/
+node_modules/
+desktop/ui/node_modules/
