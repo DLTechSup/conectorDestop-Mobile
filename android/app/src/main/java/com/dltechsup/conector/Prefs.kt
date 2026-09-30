@@ -41,6 +41,14 @@ class Prefs(ctx: Context) {
         get() = sp.getString("blocked", "") ?: ""
         set(v) = sp.edit().putString("blocked", v).apply()
 
+    var audioOn: Boolean
+        get() = sp.getBoolean("audio_on", true)
+        set(v) = sp.edit().putBoolean("audio_on", v).apply()
+    /** Continua tocando o áudio do PC com o app em segundo plano. */
+    var audioBg: Boolean
+        get() = sp.getBoolean("audio_bg", false)
+        set(v) = sp.edit().putBoolean("audio_bg", v).apply()
+
     /** Modo de toque: 0 touchpad, 1 toque direto, 2 arrastar, 3 rolar. */
     var touchMode: Int
         get() = sp.getInt("touchmode", 0)

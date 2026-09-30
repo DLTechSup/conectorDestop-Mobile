@@ -8,6 +8,8 @@ Diferenciais:
 
 - **A sessão não cai ao sair do app.** O APK roda um serviço em primeiro plano; a conexão só
   termina em **"Sair e desconectar"** (dentro do app ou na notificação fixa).
+- **Áudio do PC no celular** (WASAPI loopback): o som dos vídeos/músicas do PC toca no celular, com
+  botão de mudo na tela remota e opção de continuar tocando em segundo plano.
 - **Notificações do PC no celular** com som escolhido por você (toque do aparelho ou mp3),
   modo "alto" (toca como alarme, mesmo no silencioso) e lista de apps ignorados.
 
@@ -81,6 +83,6 @@ conexão com reconexão automática; a `ViewerActivity` só pede vídeo enquanto
 
 - Não há tela de bloqueio/UAC (janelas elevadas) nem Ctrl+Alt+Del — limitação do Windows.
 - Notificações: dependem do banco interno do Windows; apps com notificações desativadas no
-  Windows não aparecem. Sem áudio do PC e sem transferência de arquivos (ainda).
+  Windows não aparecem. Sem transferência de arquivos (ainda).
 - A janela do DeskLink usa o WebView2 do Windows (já vem no Windows 10/11 atualizado).
   Se ele faltar, o programa abre a interface no navegador padrão.

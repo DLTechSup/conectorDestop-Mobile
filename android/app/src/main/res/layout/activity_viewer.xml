@@ -101,6 +101,12 @@
                     android:src="@drawable/ic_tune" />
 
                 <ImageButton
+                    android:id="@+id/btnAudio"
+                    style="@style/ToolBtn"
+                    android:contentDescription="Áudio do PC"
+                    android:src="@drawable/ic_volume_up" />
+
+                <ImageButton
                     android:id="@+id/btnFit"
                     style="@style/ToolBtn"
                     android:contentDescription="Ajustar à tela (zoom 1x)"

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Activity, Bell, Check, Copy, Eye, EyeOff, Globe, Keyboard, Link2, Minus,
-  Monitor, Power, RefreshCw, Rocket, Send, ShieldCheck, Smartphone, Trash2, Wifi, X,
+  Monitor, Power, RefreshCw, Rocket, Send, ShieldCheck, Smartphone, Trash2, Volume2, Wifi, X,
 } from "lucide-react";
 import { call, MOCK } from "./api.js";
 
@@ -266,6 +266,9 @@ export default function App() {
             </Row>
             <Row icon={Bell} title="Enviar notificações do PC" desc="Toda notificação do Windows toca no celular.">
               <Toggle checked={s.send_notifications} onChange={(v) => act("set_option", { key: "send_notifications", value: v })} />
+            </Row>
+            <Row icon={Volume2} title="Enviar áudio do PC" desc="O som que toca no PC (vídeos, músicas) sai no celular.">
+              <Toggle checked={s.send_audio} onChange={(v) => act("set_option", { key: "send_audio", value: v })} />
             </Row>
             <Row icon={Rocket} title="Iniciar com o Windows" desc={s.autostart_supported ? "Abre minimizado na bandeja." : "Disponível no .exe instalado."}>
               <Toggle checked={s.autostart} disabled={!s.autostart_supported} onChange={(v) => act("set_autostart", { value: v })} />

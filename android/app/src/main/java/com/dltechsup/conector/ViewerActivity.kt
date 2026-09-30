@@ -47,6 +47,8 @@ class ViewerActivity : AppCompatActivity(), RemoteService.Listener, RemoteView.O
             RemoteService.instance?.sendVideo()
             toast("Qualidade: ${RemoteService.QUALITY_NAMES[prefs.quality]}")
         }
+        updateAudioIcon()
+        b.btnAudio.setOnClickListener { toggleAudio() }
         b.btnFit.setOnClickListener { b.remote.resetZoom() }
         b.btnHide.setOnClickListener { setToolbarVisible(false) }
         b.btnShow.setOnClickListener { setToolbarVisible(true) }
@@ -197,6 +199,21 @@ class ViewerActivity : AppCompatActivity(), RemoteService.Listener, RemoteView.O
     private fun cycleMode() {
         val all = RemoteView.Mode.values()
         applyMode(all[(b.remote.mode.ordinal + 1) % all.size], true)
+    }
+
+    private fun updateAudioIcon() {
+        b.btnAudio.setImageResource(if (prefs.audioOn) R.drawable.ic_volume_up else R.drawable.ic_volume_off)
+    }
+
+    private fun toggleAudio() {
+        if (!RemoteService.audioSupported && !prefs.audioOn) {
+            toast("O áudio está desativado no DeskLink do PC")
+            return
+        }
+        prefs.audioOn = !prefs.audioOn
+        updateAudioIcon()
+        RemoteService.instance?.sendAudio()
+        toast(if (prefs.audioOn) "Áudio do PC ligado" else "Áudio do PC desligado")
     }
 
     private fun cycleMonitor() {

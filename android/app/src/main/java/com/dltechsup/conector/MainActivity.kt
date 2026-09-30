@@ -89,6 +89,16 @@ class MainActivity : AppCompatActivity(), RemoteService.Listener {
         b.btnOpen.setOnClickListener { startActivity(Intent(this, ViewerActivity::class.java)) }
         b.btnExit.setOnClickListener { RemoteService.disconnect(this) }
 
+        b.switchAudio.isChecked = prefs.audioOn
+        b.switchAudio.setOnCheckedChangeListener { _, c ->
+            prefs.audioOn = c
+            RemoteService.instance?.sendAudio()
+        }
+        b.switchAudioBg.isChecked = prefs.audioBg
+        b.switchAudioBg.setOnCheckedChangeListener { _, c ->
+            prefs.audioBg = c
+            RemoteService.instance?.sendAudio()
+        }
         b.btnRingtone.setOnClickListener {
             val i = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
                 .putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALL)

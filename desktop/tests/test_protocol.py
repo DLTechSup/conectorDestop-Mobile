@@ -40,6 +40,14 @@ def test_flow():
     cfg = config.Config()
     cfg["port"] = free_port()
     srv = server.RemoteServer(cfg, log=lambda *_: None)
+
+    class FakeAudio:  # sem placa de som no teste: emite um pacote quando há demanda
+        def __init__(self): self.demand = False
+        def set(self, demand, rate=None, channels=None):
+            if demand and not self.demand:
+                srv._loop.call_later(0.05, lambda: srv._on_audio_chunk(rate, channels, b"\x01\x02\x03\x04"))
+            self.demand = demand
+    srv.audio_capture = FakeAudio()
     srv.start()
     assert srv.running, srv.error
 
@@ -71,6 +79,18 @@ def test_flow():
                     assert struct.unpack(">ffffff", m[1:25]) == (0.25, 0.5, 0.5, 0.5, 0.5, 0.25)
                     assert m[25:].startswith(b"\xff\xd8")
                     frames += 1
+            # áudio: o celular pede e recebe pacotes 0x03 + (taxa, canais) + PCM
+            await ws.send(json.dumps({"t": "audio", "on": True, "rate": 32000, "ch": 2}))
+            pcm = None
+            for _ in range(200):
+                m = await asyncio.wait_for(ws.recv(), 3)
+                if isinstance(m, bytes) and m[0] == 3:
+                    import struct as _s
+                    assert _s.unpack(">IB", m[1:6]) == (32000, 2)
+                    pcm = m[6:]
+                    break
+            assert pcm == b"\x01\x02\x03\x04"
+            await ws.send(json.dumps({"t": "audio", "on": False}))
             await ws.send(json.dumps({"t": "ping"}))
             srv.broadcast({"t": "notif", "app": "X", "title": "Oi", "body": ""})
             got = set()

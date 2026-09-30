@@ -33,7 +33,7 @@ jobs:
           --icon ../assets/icon.ico
           --add-data "ui/dist;ui/dist" --add-data "../assets/icon.ico;assets"
           --hidden-import pystray._win32 --collect-submodules websockets
-          --collect-submodules pynput --collect-all webview main.py
+          --collect-submodules pynput --collect-all webview --collect-all soundcard main.py
       - uses: actions/upload-artifact@v4
         with:
           name: DeskLink-exe

@@ -60,6 +60,8 @@ class RemoteService : Service() {
         private const val NOTIF_ID = 1
         val QUALITY = listOf(Triple(960, 12, 40), Triple(1280, 15, 55), Triple(1920, 20, 70))
         val QUALITY_NAMES = listOf("Baixa", "Média", "Alta")
+        /** Áudio por qualidade: (taxa, canais) — baixa usa menos banda. */
+        val AUDIO = listOf(16000 to 1, 32000 to 2, 48000 to 2)
 
         val listeners = CopyOnWriteArrayList<Listener>()
         @Volatile var instance: RemoteService? = null
@@ -68,6 +70,7 @@ class RemoteService : Service() {
         @Volatile var pcName = ""
         @Volatile var monitors = 1
         @Volatile var control = true
+        @Volatile var audioSupported = true
         /** Zoom: região visível da tela do PC (x, y, w, h) normalizada. O PC recorta em alta resolução. */
         @Volatile var viewport = floatArrayOf(0f, 0f, 1f, 1f)
 
@@ -98,6 +101,7 @@ class RemoteService : Service() {
     private var netCallback: ConnectivityManager.NetworkCallback? = null
     private var pcNotifId = 100
 
+    private val audio = PcAudioPlayer()
     private val latest = AtomicReference<Frame?>()
     private val posted = AtomicBoolean(false)
 
@@ -133,6 +137,7 @@ class RemoteService : Service() {
     }
 
     override fun onDestroy() {
+        audio.stop()
         generation++
         ws?.cancel()
         releaseLocks()
@@ -147,12 +152,21 @@ class RemoteService : Service() {
         sendVideo()
     }
 
+    /** Pede (ou para) o áudio do PC conforme as preferências e se a tela está visível. */
+    fun sendAudio() {
+        val want = prefs.audioOn && audioSupported && (videoWanted || prefs.audioBg)
+        if (want) audio.start() else audio.stop()
+        val (rate, ch) = AUDIO[prefs.quality.coerceIn(0, AUDIO.size - 1)]
+        send(JSONObject().put("t", "audio").put("on", want).put("rate", rate).put("ch", ch))
+    }
+
     fun sendVideo() {
         val (w, fps, q) = QUALITY[prefs.quality.coerceIn(0, QUALITY.size - 1)]
         send(JSONObject().put("t", "video").put("on", videoWanted).put("maxw", w)
             .put("fps", fps).put("q", q).put("monitor", prefs.monitor)
             .put("vx", viewport[0].toDouble()).put("vy", viewport[1].toDouble())
             .put("vw", viewport[2].toDouble()).put("vh", viewport[3].toDouble()))
+        sendAudio()
     }
 
     fun send(o: JSONObject) {
@@ -173,6 +187,7 @@ class RemoteService : Service() {
     }
 
     private fun shutdown() {
+        audio.stop()
         releaseLocks()
         unregisterNetworkCallback()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -255,6 +270,7 @@ class RemoteService : Service() {
             shutdown()
             return
         }
+        audio.stop()
         attempt++
         hostIndex++
         val delay = minOf(1000L * (1 shl minOf(attempt, 4)), 15000L)
@@ -279,6 +295,7 @@ class RemoteService : Service() {
                 prefs.pcName = pcName
                 monitors = j.optJSONArray("monitors")?.length() ?: 1
                 control = j.optBoolean("control", true)
+                audioSupported = j.optBoolean("audio", false)
                 setState(State.CONNECTED, "Conectado a $pcName")
                 listeners.forEach { it.onInfo(pcName, monitors, control) }
                 sendVideo()
@@ -288,9 +305,23 @@ class RemoteService : Service() {
         }
     }
 
-    /** Quadro: 0x02 + região (4 floats) + cursor (2 floats, -1 = desconhecido) + JPEG. */
+    /** Pacotes: 0x02 = quadro de vídeo; 0x03 = áudio (taxa uint32, canais uint8, PCM 16 bits). */
     private fun onBinary(data: ByteArray) {
-        if (data.size < 26 || data[0].toInt() != 2) return
+        if (data.isEmpty()) return
+        when (data[0].toInt()) {
+            2 -> onVideo(data)
+            3 -> if (data.size > 6) {
+                val bb = java.nio.ByteBuffer.wrap(data, 1, 5)
+                val rate = bb.int
+                val ch = bb.get().toInt()
+                audio.push(rate, ch, data.copyOfRange(6, data.size))
+            }
+        }
+    }
+
+    /** Quadro: 0x02 + região (4 floats) + cursor (2 floats, -1 = desconhecido) + JPEG. */
+    private fun onVideo(data: ByteArray) {
+        if (data.size < 26) return
         val bb = java.nio.ByteBuffer.wrap(data, 1, 24)
         val info = FloatArray(6) { bb.float }
         val bmp = BitmapFactory.decodeByteArray(data, 25, data.size - 25) ?: return

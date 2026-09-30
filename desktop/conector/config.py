@@ -14,6 +14,7 @@ DEFAULTS = {
     "external_host": "",
     "allow_control": True,
     "send_notifications": True,
+    "send_audio": True,
 }
 
 

@@ -8,7 +8,7 @@ export const MOCK = !token || params.get("mock") === "1";
 const mockState = {
   name: "DeskLink", version: "0.2.0", hostname: "DESKTOP-DL01",
   running: true, error: "", port: 8765, key: "K7QM2-XW9RT-4HBN8-PC3VD",
-  external_host: "", allow_control: true, send_notifications: true,
+  external_host: "", allow_control: true, send_notifications: true, send_audio: true,
   autostart: false, autostart_supported: true,
   addresses: [{ label: "Rede local", ip: "192.168.0.14" }, { label: "Tailscale", ip: "100.88.14.20" }],
   pair_url: "conector://pair?h=192.168.0.14,100.88.14.20&p=8765&k=K7QM2-XW9RT-4HBN8-PC3VD&f=00&n=DESKTOP-DL01",

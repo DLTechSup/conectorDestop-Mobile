@@ -46,6 +46,7 @@ pyinstaller --noconfirm --clean --onefile --noconsole ^
     --collect-submodules websockets ^
     --collect-submodules pynput ^
     --collect-all webview ^
+    --collect-all soundcard ^
     main.py || (echo [ERRO] Falha no PyInstaller. & pause & exit /b 1)
 
 echo.

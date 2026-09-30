@@ -40,6 +40,7 @@ class Controller:
             "key": self.cfg["key"], "external_host": self.cfg["external_host"],
             "allow_control": self.cfg["allow_control"],
             "send_notifications": self.cfg["send_notifications"],
+            "send_audio": self.cfg["send_audio"],
             "autostart": system.get_autostart(),
             "autostart_supported": system.autostart_supported(),
             "addresses": [{"label": l, "ip": ip} for l, ip in local_addresses()],
@@ -49,9 +50,13 @@ class Controller:
         }
 
     def set_option(self, key, value):
-        if key not in ("allow_control", "send_notifications"):
+        if key not in ("allow_control", "send_notifications", "send_audio"):
             raise ValueError("opção inválida")
         self.cfg[key] = bool(value)
+        if key == "send_audio" and not value:  # corta o áudio dos celulares já conectados
+            for c in self.server.clients:
+                c.audio = False
+            self.server._update_audio()
 
     def set_autostart(self, value):
         if not system.set_autostart(bool(value)):

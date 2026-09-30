@@ -11,6 +11,7 @@ import time
 import websockets
 
 from . import capture
+from .audio import AudioCapture
 from .config import Config, ensure_certificate
 
 AUTH_TIMEOUT = 10
@@ -29,6 +30,9 @@ class Client:
         self.evt = asyncio.Event()
         self.capturer = capture.Capturer()
         self.since = time.time()
+        self.audio = False
+        self.audio_fmt = (32000, 2)
+        self.audio_q = None  # criada dentro do loop asyncio
 
 
 class RemoteServer:
@@ -44,6 +48,7 @@ class RemoteServer:
         self._thread = None
         self._fails = {}  # ip -> (count, blocked_until)
         self._input = None
+        self.audio_capture = AudioCapture(self._on_audio_chunk, log)
 
     # ---------------- ciclo de vida ----------------
     def start(self):
@@ -146,8 +151,11 @@ class RemoteServer:
             "t": "auth_ok", "host": socket.gethostname(),
             "monitors": capture.list_monitors(),
             "control": bool(self.cfg["allow_control"]),
+            "audio": bool(self.cfg["send_audio"]),
         }))
+        client.audio_q = asyncio.Queue(maxsize=24)  # ~0,7 s; descarta o mais antigo se lotar
         streamer = asyncio.ensure_future(self._stream(client))
+        audio_sender = asyncio.ensure_future(self._audio_sender(client))
         try:
             async for raw in ws:
                 if isinstance(raw, bytes):
@@ -162,6 +170,9 @@ class RemoteServer:
             pass
         finally:
             streamer.cancel()
+            audio_sender.cancel()
+            client.audio = False
+            self._update_audio()
             client.capturer.close()
             if client in self.clients:
                 self.clients.remove(client)
@@ -179,6 +190,11 @@ class RemoteServer:
                            (("vx", 0.0), ("vy", 0.0), ("vw", 1.0), ("vh", 1.0)))
             c.capturer.reset()
             (c.evt.set if c.video else c.evt.clear)()
+        elif t == "audio":
+            c.audio = bool(m.get("on")) and bool(self.cfg["send_audio"])
+            c.audio_fmt = (min(max(int(m.get("rate", 32000)), 8000), 48000),
+                           2 if int(m.get("ch", 2)) >= 2 else 1)
+            self._update_audio(c.audio_fmt if c.audio else None)
         elif t == "ping":
             await c.ws.send('{"t":"pong"}')
         elif t == "bye":
@@ -194,6 +210,34 @@ class RemoteServer:
                 self._input.handle_key(m)
             else:
                 self._input.handle_text(m)
+
+    # ---------------- áudio ----------------
+    def _update_audio(self, fmt=None):
+        want = any(c.audio for c in self.clients)
+        self.audio_capture.set(want, *(fmt or (None, None)))
+
+    def _on_audio_chunk(self, rate, ch, pcm):
+        """Thread de captura -> fila de cada celular que pediu áudio."""
+        if not self._loop:
+            return
+        packet = b"\x03" + struct.pack(">IB", rate, ch) + pcm
+
+        def put():
+            for c in self.clients:
+                if c.audio and c.audio_q is not None and c.audio_fmt == (rate, ch):
+                    if c.audio_q.full():
+                        c.audio_q.get_nowait()
+                    c.audio_q.put_nowait(packet)
+        self._loop.call_soon_threadsafe(put)
+
+    async def _audio_sender(self, c: Client):
+        try:
+            while True:
+                await c.ws.send(await c.audio_q.get())
+        except (asyncio.CancelledError, websockets.ConnectionClosed):
+            pass
+        except Exception as e:
+            self.log(f"erro no áudio: {e}")
 
     async def _stream(self, c: Client):
         loop = asyncio.get_running_loop()
